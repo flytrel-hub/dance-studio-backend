@@ -92,6 +92,7 @@ export class LessonsService {
         startTime: dto.startTime,
         endTime: dto.endTime,
         room: dto.room,
+        bookingType: (dto.bookingType as any) || 'OPEN',
       },
       include: { group: true, trainer: true },
     });
@@ -172,7 +173,7 @@ export class LessonsService {
 
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
-      include: { group: { include: { groupMembers: true } } },
+      include: { group: true },
     });
 
     if (!lesson) {
@@ -183,25 +184,12 @@ export class LessonsService {
       throw new BadRequestException('Запись возможна только на запланированные занятия');
     }
 
-    const isMember = lesson.group.groupMembers.some(gm => gm.client_id === client.id);
-    if (!isMember) {
-      throw new BadRequestException('Вы не являетесь участником этой группы');
-    }
-
     const alreadyBooked = await this.prisma.attendance.findUnique({
       where: { lesson_id_client_id: { lesson_id: lessonId, client_id: client.id } },
     });
 
     if (alreadyBooked) {
       return { message: 'Вы уже записаны на это занятие' };
-    }
-
-    const attendedCount = await this.prisma.attendance.count({
-      where: { lesson_id: lessonId },
-    });
-
-    if (attendedCount >= lesson.group.maxMembers) {
-      throw new BadRequestException('Нет свободных мест');
     }
 
     const activeSubscription = await this.prisma.subscription.findFirst({
@@ -216,27 +204,37 @@ export class LessonsService {
       throw new BadRequestException('Нет активного абонемента');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      await tx.attendance.create({
+    const isApplication = lesson.bookingType === 'APPLICATION';
+
+    if (!isApplication) {
+      const attendedCount = await this.prisma.attendance.count({
+        where: { lesson_id: lessonId },
+      });
+      if (attendedCount >= lesson.group.maxMembers) {
+        throw new BadRequestException('Нет свободных мест');
+      }
+    }
+
+    const status = isApplication ? 'PENDING' : 'BOOKED';
+
+    await this.prisma.attendance.create({
+      data: {
+        lesson_id: lessonId,
+        client_id: client.id,
+        status: status as any,
+        subscriptionId: activeSubscription.id,
+      },
+    });
+
+    if (!isApplication && activeSubscription.type !== 'UNLIMITED') {
+      await this.prisma.subscription.update({
+        where: { id: activeSubscription.id },
         data: {
-          lesson_id: lessonId,
-          client_id: client.id,
-          status: 'BOOKED',
-          subscriptionId: activeSubscription.id,
+          lessonsLeft: activeSubscription.lessonsLeft - 1,
+          status: activeSubscription.lessonsLeft - 1 === 0 ? 'COMPLETED' : 'ACTIVE',
         },
       });
-
-      if (activeSubscription.type !== 'UNLIMITED') {
-        const newLessonsLeft = activeSubscription.lessonsLeft - 1;
-        await tx.subscription.update({
-          where: { id: activeSubscription.id },
-          data: {
-            lessonsLeft: newLessonsLeft,
-            status: newLessonsLeft === 0 ? 'COMPLETED' : 'ACTIVE',
-          },
-        });
-      }
-    });
+    }
 
     const lessonFull = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
@@ -245,13 +243,13 @@ export class LessonsService {
     if (lessonFull) {
       await this.notifications.create(
         lessonFull.trainer.user.id,
-        'Новая запись на занятие',
-        `${client.fullName} записался на занятие "${lessonFull.group.name}" ${lessonFull.lessonDate.toLocaleDateString('ru-RU')} в ${lessonFull.startTime}`,
-        'booking',
+        isApplication ? 'Новая заявка на занятие' : 'Новая запись на занятие',
+        `${client.fullName} ${isApplication ? 'подал заявку на' : 'записался на'} занятие "${lessonFull.group.name}" ${lessonFull.lessonDate.toLocaleDateString('ru-RU')} в ${lessonFull.startTime}`,
+        isApplication ? 'booking_application' : 'booking',
       );
     }
 
-    return { message: 'Вы записаны на занятие' };
+    return { message: isApplication ? 'Заявка отправлена. Ожидайте одобрения тренера.' : 'Вы записаны на занятие' };
   }
 
   async cancelBooking(lessonId: number, userId: number) {
@@ -311,5 +309,103 @@ export class LessonsService {
     }
 
     return { message: 'Запись отменена' };
+  }
+
+  async approveBooking(lessonId: number, clientId: number, trainerUserId: number) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { trainer: true, group: true },
+    });
+    if (!lesson) throw new NotFoundException('Занятие не найдено');
+    if (lesson.trainer.user_id !== trainerUserId) throw new BadRequestException('Нет доступа');
+
+    const attendance = await this.prisma.attendance.findUnique({
+      where: { lesson_id_client_id: { lesson_id: lessonId, client_id: clientId } },
+      include: { client: true },
+    });
+    if (!attendance) throw new NotFoundException('Запись не найдена');
+    if (attendance.status !== 'PENDING') throw new BadRequestException('Запись не в статусе ожидания');
+
+    const attendedCount = await this.prisma.attendance.count({
+      where: { lesson_id: lessonId, status: { not: 'PENDING' } },
+    });
+    if (attendedCount >= lesson.group.maxMembers) {
+      throw new BadRequestException('Нет свободных мест');
+    }
+
+    await this.prisma.attendance.update({
+      where: { lesson_id_client_id: { lesson_id: lessonId, client_id: clientId } },
+      data: { status: 'BOOKED' },
+    });
+
+    if (attendance.subscriptionId) {
+      const subscription = await this.prisma.subscription.findUnique({
+        where: { id: attendance.subscriptionId },
+      });
+      if (subscription && subscription.type !== 'UNLIMITED') {
+        const newLessonsLeft = subscription.lessonsLeft - 1;
+        await this.prisma.subscription.update({
+          where: { id: subscription.id },
+          data: {
+            lessonsLeft: newLessonsLeft,
+            status: newLessonsLeft === 0 ? 'COMPLETED' : 'ACTIVE',
+          },
+        });
+      }
+    }
+
+    await this.notifications.create(
+      attendance.client.user_id,
+      'Заявка одобрена',
+      `Ваша заявка на занятие "${lesson.group.name}" ${lesson.lessonDate.toLocaleDateString('ru-RU')} в ${lesson.startTime} одобрена`,
+      'booking_approved',
+    );
+
+    return { message: 'Заявка одобрена' };
+  }
+
+  async rejectBooking(lessonId: number, clientId: number, trainerUserId: number) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { trainer: true, group: true },
+    });
+    if (!lesson) throw new NotFoundException('Занятие не найдено');
+    if (lesson.trainer.user_id !== trainerUserId) throw new BadRequestException('Нет доступа');
+
+    const attendance = await this.prisma.attendance.findUnique({
+      where: { lesson_id_client_id: { lesson_id: lessonId, client_id: clientId } },
+      include: { client: true },
+    });
+    if (!attendance) throw new NotFoundException('Запись не найдена');
+
+    await this.prisma.attendance.delete({
+      where: { lesson_id_client_id: { lesson_id: lessonId, client_id: clientId } },
+    });
+
+    await this.notifications.create(
+      attendance.client.user_id,
+      'Заявка отклонена',
+      `Ваша заявка на занятие "${lesson.group.name}" ${lesson.lessonDate.toLocaleDateString('ru-RU')} в ${lesson.startTime} отклонена`,
+      'booking_rejected',
+    );
+
+    return { message: 'Заявка отклонена' };
+  }
+
+  async getPendingBookings(trainerUserId: number) {
+    const trainer = await this.prisma.trainer.findUnique({ where: { user_id: trainerUserId } });
+    if (!trainer) throw new NotFoundException('Тренер не найден');
+
+    return this.prisma.attendance.findMany({
+      where: {
+        status: 'PENDING',
+        lesson: { trainer_id: trainer.id },
+      },
+      include: {
+        client: { select: { id: true, fullName: true, phone: true } },
+        lesson: { include: { group: { select: { name: true, danceStyle: true } } } },
+      },
+      orderBy: { lesson: { lessonDate: 'asc' } },
+    });
   }
 }

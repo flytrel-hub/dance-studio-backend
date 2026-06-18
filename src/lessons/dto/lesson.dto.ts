@@ -29,6 +29,11 @@ export class CreateLessonDto {
   @MinLength(1)
   @MaxLength(20)
   room: string;
+
+  @ApiPropertyOptional({ enum: ['OPEN', 'APPLICATION'], default: 'OPEN' })
+  @IsOptional()
+  @IsEnum(['OPEN', 'APPLICATION'])
+  bookingType?: string;
 }
 
 export class UpdateLessonDto {
@@ -66,4 +71,9 @@ export class UpdateLessonDto {
   @IsOptional()
   @IsEnum(['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
   status?: string;
+
+  @ApiPropertyOptional({ enum: ['OPEN', 'APPLICATION'] })
+  @IsOptional()
+  @IsEnum(['OPEN', 'APPLICATION'])
+  bookingType?: string;
 }

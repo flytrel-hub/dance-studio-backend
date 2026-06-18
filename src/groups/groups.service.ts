@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../config/prisma.service';
 import { CreateGroupDto, UpdateGroupDto, AddMembersDto } from './dto/group.dto';
 
@@ -6,8 +6,14 @@ import { CreateGroupDto, UpdateGroupDto, AddMembersDto } from './dto/group.dto';
 export class GroupsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(trainerId?: number) {
+    const where: any = {};
+    if (trainerId) {
+      where.trainer_id = trainerId;
+    }
+
     const groups = await this.prisma.group.findMany({
+      where,
       include: {
         trainer: { include: { user: { select: { email: true } } } },
         groupMembers: { include: { client: { select: { fullName: true } } } },
@@ -108,14 +114,18 @@ export class GroupsService {
     return { message: 'Группа удалена' };
   }
 
-  async addMembers(id: number, dto: AddMembersDto) {
+  async addMembers(id: number, dto: AddMembersDto, user: { id: number; role: string }) {
     const group = await this.prisma.group.findUnique({
       where: { id },
-      include: { groupMembers: true },
+      include: { groupMembers: true, trainer: { include: { user: true } } },
     });
 
     if (!group) {
       throw new NotFoundException('Группа не найдена');
+    }
+
+    if (user.role === 'TRAINER' && group.trainer.user_id !== user.id) {
+      throw new ForbiddenException('Вы не являетесь тренером этой группы');
     }
 
     const existingIds = group.groupMembers.map(gm => gm.client_id);
@@ -132,7 +142,20 @@ export class GroupsService {
     return { message: 'Участники добавлены' };
   }
 
-  async removeMember(groupId: number, clientId: number) {
+  async removeMember(groupId: number, clientId: number, user: { id: number; role: string }) {
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+      include: { trainer: { include: { user: true } } },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Группа не найдена');
+    }
+
+    if (user.role === 'TRAINER' && group.trainer.user_id !== user.id) {
+      throw new ForbiddenException('Вы не являетесь тренером этой группы');
+    }
+
     await this.prisma.groupMember.deleteMany({
       where: { group_id: groupId, client_id: clientId },
     });

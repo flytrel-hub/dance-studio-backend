@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto, UpdateGroupDto, AddMembersDto } from './dto/group.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -15,8 +15,9 @@ export class GroupsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Список групп' })
-  findAll() {
-    return this.groupsService.findAll();
+  @ApiQuery({ name: 'trainerId', required: false })
+  findAll(@Query('trainerId') trainerId?: string) {
+    return this.groupsService.findAll(trainerId ? +trainerId : undefined);
   }
 
   @Get(':id')
@@ -55,20 +56,18 @@ export class GroupsController {
   }
 
   @Post(':id/members')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Добавить участников в группу' })
-  addMembers(@Param('id') id: string, @Body() dto: AddMembersDto) {
-    return this.groupsService.addMembers(+id, dto);
+  addMembers(@Param('id') id: string, @Body() dto: AddMembersDto, @Req() req: any) {
+    return this.groupsService.addMembers(+id, dto, req.user);
   }
 
   @Delete(':id/members/:clientId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Удалить участника из группы' })
-  removeMember(@Param('id') id: string, @Param('clientId') clientId: string) {
-    return this.groupsService.removeMember(+id, +clientId);
+  removeMember(@Param('id') id: string, @Param('clientId') clientId: string, @Req() req: any) {
+    return this.groupsService.removeMember(+id, +clientId, req.user);
   }
 }

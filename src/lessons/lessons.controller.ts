@@ -95,4 +95,33 @@ export class LessonsController {
   cancelBooking(@Param('id') id: string, @Req() req: any) {
     return this.lessonsService.cancelBooking(+id, req.user.id);
   }
+
+  @Post(':id/approve/:clientId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRAINER', 'ADMIN')
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Одобрить заявку на занятие' })
+  approveBooking(@Param('id') id: string, @Param('clientId') clientId: string, @Req() req: any) {
+    return this.lessonsService.approveBooking(+id, +clientId, req.user.id);
+  }
+
+  @Post(':id/reject/:clientId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRAINER', 'ADMIN')
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Отклонить заявку на занятие' })
+  rejectBooking(@Param('id') id: string, @Param('clientId') clientId: string, @Req() req: any) {
+    return this.lessonsService.rejectBooking(+id, +clientId, req.user.id);
+  }
+
+  @Get('pending-bookings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRAINER', 'ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Получить ожидающие заявки' })
+  getPendingBookings(@Req() req: any) {
+    return this.lessonsService.getPendingBookings(req.user.id);
+  }
 }
