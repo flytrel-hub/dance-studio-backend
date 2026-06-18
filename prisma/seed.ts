@@ -26,6 +26,16 @@ async function main() {
     },
   });
 
+  await prisma.client.upsert({
+    where: { user_id: adminUser.id },
+    update: {},
+    create: {
+      user_id: adminUser.id,
+      fullName: 'Администратор',
+      phone: '+7 (999) 000-00-00',
+    },
+  });
+
   const trainerUsers = await Promise.all([
     prisma.user.upsert({
       where: { email: 'ivanov@studio.ru' },
