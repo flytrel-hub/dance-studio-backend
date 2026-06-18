@@ -18,6 +18,16 @@ export class CreateGroupDto {
   @IsNumber()
   maxMembers: number;
 
+  @ApiPropertyOptional({ example: '💃' })
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @ApiPropertyOptional({ example: '#7C3AED' })
+  @IsOptional()
+  @IsString()
+  color?: string;
+
   @ApiPropertyOptional({ type: [Number] })
   @IsOptional()
   @IsArray()
@@ -44,6 +54,16 @@ export class UpdateGroupDto {
   @IsOptional()
   @IsNumber()
   maxMembers?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  color?: string;
 }
 
 export class AddMembersDto {

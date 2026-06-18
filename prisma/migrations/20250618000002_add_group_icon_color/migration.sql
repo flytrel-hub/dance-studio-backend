@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "groups" ADD COLUMN "icon" TEXT DEFAULT '💃';
+ALTER TABLE "groups" ADD COLUMN "color" TEXT DEFAULT '#7C3AED';

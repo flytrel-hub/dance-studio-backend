@@ -25,6 +25,8 @@ export class GroupsService {
       id: g.id,
       name: g.name,
       danceStyle: g.danceStyle,
+      icon: g.icon,
+      color: g.color,
       trainer: { id: g.trainer.id, fullName: g.trainer.fullName, specialization: g.trainer.specialization },
       maxMembers: g.maxMembers,
       membersCount: g.groupMembers.length,
@@ -50,6 +52,8 @@ export class GroupsService {
       id: group.id,
       name: group.name,
       danceStyle: group.danceStyle,
+      icon: group.icon,
+      color: group.color,
       trainer: { id: group.trainer.id, fullName: group.trainer.fullName, specialization: group.trainer.specialization },
       maxMembers: group.maxMembers,
       members: group.groupMembers.map(gm => ({
@@ -76,6 +80,8 @@ export class GroupsService {
         danceStyle: dto.danceStyle,
         trainer_id: dto.trainerId,
         maxMembers: dto.maxMembers,
+        icon: dto.icon,
+        color: dto.color,
         groupMembers: dto.clientIds ? {
           create: dto.clientIds.map(id => ({ client_id: id })),
         } : undefined,
@@ -99,6 +105,8 @@ export class GroupsService {
         danceStyle: dto.danceStyle,
         trainer_id: dto.trainerId,
         maxMembers: dto.maxMembers,
+        icon: dto.icon,
+        color: dto.color,
       },
       include: { trainer: true },
     });

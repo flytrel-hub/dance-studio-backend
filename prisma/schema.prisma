@@ -131,6 +131,8 @@ model Group {
   trainer    Trainer  @relation(fields: [trainer_id], references: [id], onDelete: Cascade)
   trainer_id Int
   maxMembers Int      @map("max_members")
+  icon       String?  @default("💃")
+  color      String?  @default("#7C3AED")
 
   groupMembers GroupMember[]
   lessons      Lesson[]
