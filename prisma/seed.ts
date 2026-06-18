@@ -4,6 +4,29 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  // Cleanup duplicate lessons
+  const allLessons = await prisma.lesson.findMany({
+    orderBy: { id: 'asc' },
+    select: { id: true, group_id: true, trainer_id: true, lessonDate: true, startTime: true },
+  });
+
+  const seen = new Set<string>();
+  const duplicates: number[] = [];
+  for (const lesson of allLessons) {
+    const key = `${lesson.group_id}-${lesson.trainer_id}-${lesson.lessonDate.toISOString().split('T')[0]}-${lesson.startTime}`;
+    if (seen.has(key)) {
+      duplicates.push(lesson.id);
+    } else {
+      seen.add(key);
+    }
+  }
+
+  if (duplicates.length > 0) {
+    await prisma.attendance.deleteMany({ where: { lesson_id: { in: duplicates } } });
+    await prisma.lesson.deleteMany({ where: { id: { in: duplicates } } });
+    console.log(`Removed ${duplicates.length} duplicate lessons`);
+  }
+
   const roles = await Promise.all([
     prisma.userRole.upsert({ where: { name: 'ADMIN' }, update: {}, create: { name: 'ADMIN' } }),
     prisma.userRole.upsert({ where: { name: 'TRAINER' }, update: {}, create: { name: 'TRAINER' } }),
@@ -151,55 +174,46 @@ async function main() {
   }
 
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const lessonsToCreate = [
+    { groupIdx: 0, trainerIdx: 0, startTime: '10:00', endTime: '11:00', room: 'Зал 1' },
+    { groupIdx: 1, trainerIdx: 1, startTime: '11:30', endTime: '12:30', room: 'Зал 2' },
+    { groupIdx: 2, trainerIdx: 2, startTime: '13:00', endTime: '14:00', room: 'Зал 1' },
+  ];
+
   const lessons = [];
   for (let day = 0; day < 7; day++) {
     const date = new Date(today);
     date.setDate(date.getDate() + day);
-    const dateStr = date.toISOString().split('T')[0];
 
-    const existing = await prisma.lesson.findMany({
-      where: { lessonDate: new Date(dateStr) },
-    });
-    if (existing.length > 0) {
-      lessons.push(...existing);
-      continue;
+    for (const lt of lessonsToCreate) {
+      const existing = await prisma.lesson.findFirst({
+        where: {
+          group_id: groups[lt.groupIdx].id,
+          trainer_id: trainers[lt.trainerIdx].id,
+          lessonDate: date,
+          startTime: lt.startTime,
+        },
+      });
+      if (existing) {
+        lessons.push(existing);
+      } else {
+        lessons.push(
+          await prisma.lesson.create({
+            data: {
+              group_id: groups[lt.groupIdx].id,
+              trainer_id: trainers[lt.trainerIdx].id,
+              lessonDate: date,
+              startTime: lt.startTime,
+              endTime: lt.endTime,
+              room: lt.room,
+              status: 'SCHEDULED',
+            },
+          }),
+        );
+      }
     }
-
-    lessons.push(
-      await prisma.lesson.create({
-        data: {
-          group_id: groups[0].id,
-          trainer_id: trainers[0].id,
-          lessonDate: date,
-          startTime: '10:00',
-          endTime: '11:00',
-          room: 'Зал 1',
-          status: 'SCHEDULED',
-        },
-      }),
-      await prisma.lesson.create({
-        data: {
-          group_id: groups[1].id,
-          trainer_id: trainers[1].id,
-          lessonDate: date,
-          startTime: '11:30',
-          endTime: '12:30',
-          room: 'Зал 2',
-          status: 'SCHEDULED',
-        },
-      }),
-      await prisma.lesson.create({
-        data: {
-          group_id: groups[2].id,
-          trainer_id: trainers[2].id,
-          lessonDate: date,
-          startTime: '13:00',
-          endTime: '14:00',
-          room: 'Зал 1',
-          status: 'SCHEDULED',
-        },
-      }),
-    );
   }
 
   for (const client of clients.slice(0, 5)) {
