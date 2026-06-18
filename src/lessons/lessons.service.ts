@@ -69,26 +69,50 @@ export class LessonsService {
     const trainer = await this.prisma.trainer.findUnique({ where: { id: dto.trainerId } });
     if (!trainer) throw new BadRequestException('Тренер не найден');
 
-    const conflict = await this.prisma.lesson.findFirst({
+    const date = new Date(dto.lessonDate);
+    const timeOverlap = { startTime: { lt: dto.endTime }, endTime: { gt: dto.startTime } };
+
+    const trainerConflict = await this.prisma.lesson.findFirst({
       where: {
         trainer_id: dto.trainerId,
-        lessonDate: new Date(dto.lessonDate),
+        lessonDate: date,
         status: { not: 'CANCELLED' },
-        OR: [
-          { startTime: { lt: dto.endTime }, endTime: { gt: dto.startTime } },
-        ],
+        ...timeOverlap,
       },
     });
-
-    if (conflict) {
+    if (trainerConflict) {
       throw new BadRequestException('Тренер уже занят в это время');
+    }
+
+    const roomConflict = await this.prisma.lesson.findFirst({
+      where: {
+        room: dto.room,
+        lessonDate: date,
+        status: { not: 'CANCELLED' },
+        ...timeOverlap,
+      },
+    });
+    if (roomConflict) {
+      throw new BadRequestException(`Зал "${dto.room}" уже занят в это время`);
+    }
+
+    const groupConflict = await this.prisma.lesson.findFirst({
+      where: {
+        group_id: dto.groupId,
+        lessonDate: date,
+        status: { not: 'CANCELLED' },
+        ...timeOverlap,
+      },
+    });
+    if (groupConflict) {
+      throw new BadRequestException(`Группа "${group.name}" уже занята в это время`);
     }
 
     return this.prisma.lesson.create({
       data: {
         group_id: dto.groupId,
         trainer_id: dto.trainerId,
-        lessonDate: new Date(dto.lessonDate),
+        lessonDate: date,
         startTime: dto.startTime,
         endTime: dto.endTime,
         room: dto.room,
@@ -102,6 +126,61 @@ export class LessonsService {
     const lesson = await this.prisma.lesson.findUnique({ where: { id } });
     if (!lesson) {
       throw new NotFoundException('Занятие не найдено');
+    }
+
+    const finalDate = dto.lessonDate ? new Date(dto.lessonDate) : lesson.lessonDate;
+    const finalStart = dto.startTime || lesson.startTime;
+    const finalEnd = dto.endTime || lesson.endTime;
+    const finalTrainerId = dto.trainerId || lesson.trainer_id;
+    const finalRoom = dto.room || lesson.room;
+    const finalGroupId = dto.groupId || lesson.group_id;
+
+    if (finalStart >= finalEnd) {
+      throw new BadRequestException('Время окончания должно быть позже времени начала');
+    }
+
+    if (dto.status && dto.status !== 'CANCELLED') {
+      const timeOverlap = { startTime: { lt: finalEnd }, endTime: { gt: finalStart } };
+
+      const trainerConflict = await this.prisma.lesson.findFirst({
+        where: {
+          trainer_id: finalTrainerId,
+          lessonDate: finalDate,
+          status: { not: 'CANCELLED' },
+          id: { not: id },
+          ...timeOverlap,
+        },
+      });
+      if (trainerConflict) {
+        throw new BadRequestException('Тренер уже занят в это время');
+      }
+
+      const roomConflict = await this.prisma.lesson.findFirst({
+        where: {
+          room: finalRoom,
+          lessonDate: finalDate,
+          status: { not: 'CANCELLED' },
+          id: { not: id },
+          ...timeOverlap,
+        },
+      });
+      if (roomConflict) {
+        throw new BadRequestException(`Зал "${finalRoom}" уже занят в это время`);
+      }
+
+      const groupConflict = await this.prisma.lesson.findFirst({
+        where: {
+          group_id: finalGroupId,
+          lessonDate: finalDate,
+          status: { not: 'CANCELLED' },
+          id: { not: id },
+          ...timeOverlap,
+        },
+      });
+      if (groupConflict) {
+        const group = await this.prisma.group.findUnique({ where: { id: finalGroupId } });
+        throw new BadRequestException(`Группа "${group?.name || ''}" уже занята в это время`);
+      }
     }
 
     return this.prisma.lesson.update({
