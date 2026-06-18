@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TRAINER
+  CLIENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum LessonStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  BOOKED
+  PRESENT
+  ABSENT
+}
+
+enum SubscriptionType {
+  FOUR_LESSONS
+  EIGHT_LESSONS
+  TWELVE_LESSONS
+  UNLIMITED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  FROZEN
+  EXPIRED
+  COMPLETED
+}
+
+model UserRole {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole  @relation(fields: [role_id], references: [id])
+  role_id      Int
+  createdAt    DateTime  @default(now()) @map("created_at")
+  client       Client?
+  trainer      Trainer?
+  refreshToken String?   @map("refresh_token")
+
+  @@map("users")
+}
+
+model Client {
+  id          Int      @id @default(autoincrement())
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id     Int      @unique
+  fullName    String   @map("full_name")
+  phone       String
+  birthDate   DateTime? @map("birth_date")
+  gender      Gender?
+  comment     String?
+  avatarUrl   String?  @map("avatar_url")
+  registeredAt DateTime @default(now()) @map("registered_at")
+
+  groupMembers GroupMember[]
+  attendances  Attendance[]
+  subscriptions Subscription[]
+  payments     Payment[]
+
+  @@map("clients")
+}
+
+model Trainer {
+  id             Int      @id @default(autoincrement())
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id        Int      @unique
+  fullName       String   @map("full_name")
+  phone          String
+  specialization String
+  description    String?
+  avatarUrl      String?  @map("avatar_url")
+
+  groups  Group[]
+  lessons Lesson[]
+
+  @@map("trainers")
+}
+
+model Group {
+  id         Int      @id @default(autoincrement())
+  name       String
+  danceStyle String   @map("dance_style")
+  trainer    Trainer  @relation(fields: [trainer_id], references: [id], onDelete: Cascade)
+  trainer_id Int
+  maxMembers Int      @map("max_members")
+
+  groupMembers GroupMember[]
+  lessons      Lesson[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id        Int    @id @default(autoincrement())
+  group     Group  @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  group_id  Int
+  client    Client @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  client_id Int
+
+  @@unique([group_id, client_id])
+  @@map("group_members")
+}
+
+model Lesson {
+  id         Int          @id @default(autoincrement())
+  group      Group        @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  group_id   Int
+  trainer    Trainer      @relation(fields: [trainer_id], references: [id], onDelete: Cascade)
+  trainer_id Int
+  lessonDate DateTime     @map("lesson_date")
+  startTime  String       @map("start_time")
+  endTime    String       @map("end_time")
+  room       String
+  status     LessonStatus @default(SCHEDULED)
+
+  attendances Attendance[]
+
+  @@map("lessons")
+}
+
+model Attendance {
+  id              Int              @id @default(autoincrement())
+  lesson          Lesson           @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+  lesson_id       Int
+  client          Client           @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  client_id       Int
+  status          AttendanceStatus
+  comment         String?
+  subscriptionId  Int?             @map("subscription_id")
+  subscription    Subscription?    @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([lesson_id, client_id])
+  @@map("attendance")
+}
+
+model Subscription {
+  id          Int                @id @default(autoincrement())
+  client      Client             @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  client_id   Int
+  type        SubscriptionType
+  status      SubscriptionStatus @default(ACTIVE)
+  lessonsLeft Int                @map("lessons_left")
+  startDate   DateTime           @map("start_date")
+  endDate     DateTime           @map("end_date")
+  price       Float
+
+  payments     Payment[]
+  attendances  Attendance[]
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id            Int      @id @default(autoincrement())
+  client        Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  client_id     Int
+  amount        Float
+  paymentDate   DateTime @default(now()) @map("payment_date")
+  paymentMethod String   @map("payment_method")
+  comment       String?
+  subscription  Subscription? @relation(fields: [subscription_id], references: [id], onDelete: SetNull)
+  subscription_id Int?
+
+  @@map("payments")
+}
