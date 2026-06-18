@@ -111,6 +111,7 @@ export class ClientsService {
       fullName: client.fullName,
       phone: client.phone,
       email: client.user.email,
+      password,
       birthDate: client.birthDate,
       gender: client.gender,
       comment: client.comment,

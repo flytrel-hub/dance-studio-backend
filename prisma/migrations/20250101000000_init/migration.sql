@@ -8,7 +8,10 @@ CREATE TYPE "Gender" AS ENUM ('MALE', 'FEMALE');
 CREATE TYPE "LessonStatus" AS ENUM ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
-CREATE TYPE "AttendanceStatus" AS ENUM ('BOOKED', 'PRESENT', 'ABSENT');
+CREATE TYPE "BookingType" AS ENUM ('OPEN', 'APPLICATION');
+
+-- CreateEnum
+CREATE TYPE "AttendanceStatus" AS ENUM ('PENDING', 'BOOKED', 'PRESENT', 'ABSENT');
 
 -- CreateEnum
 CREATE TYPE "SubscriptionType" AS ENUM ('FOUR_LESSONS', 'EIGHT_LESSONS', 'TWELVE_LESSONS', 'UNLIMITED');
@@ -94,6 +97,7 @@ CREATE TABLE "lessons" (
     "end_time" TEXT NOT NULL,
     "room" TEXT NOT NULL,
     "status" "LessonStatus" NOT NULL DEFAULT 'SCHEDULED',
+    "booking_type" "BookingType" NOT NULL DEFAULT 'OPEN',
 
     CONSTRAINT "lessons_pkey" PRIMARY KEY ("id")
 );
@@ -135,6 +139,19 @@ CREATE TABLE "payments" (
     "subscription_id" INTEGER,
 
     CONSTRAINT "payments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "notifications" (
+    "id" SERIAL NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "title" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "type" TEXT NOT NULL,
+    "is_read" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "notifications_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -196,3 +213,6 @@ ALTER TABLE "payments" ADD CONSTRAINT "payments_client_id_fkey" FOREIGN KEY ("cl
 
 -- AddForeignKey
 ALTER TABLE "payments" ADD CONSTRAINT "payments_subscription_id_fkey" FOREIGN KEY ("subscription_id") REFERENCES "subscriptions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -79,6 +79,7 @@ export class TrainersService {
       fullName: trainer.fullName,
       phone: trainer.phone,
       email: trainer.user.email,
+      password,
       specialization: trainer.specialization,
       description: trainer.description,
     };

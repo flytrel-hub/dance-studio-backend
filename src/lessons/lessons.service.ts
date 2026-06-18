@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../config/prisma.service';
 import { CreateLessonDto, UpdateLessonDto } from './dto/lesson.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class LessonsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async findAll(query?: { date?: string; groupId?: number; trainerId?: number }) {
     const where: any = {};
@@ -232,9 +236,22 @@ export class LessonsService {
           },
         });
       }
-
-      return { message: 'Вы записаны на занятие' };
     });
+
+    const lessonFull = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { group: true, trainer: { include: { user: true } } },
+    });
+    if (lessonFull) {
+      await this.notifications.create(
+        lessonFull.trainer.user.id,
+        'Новая запись на занятие',
+        `${client.fullName} записался на занятие "${lessonFull.group.name}" ${lessonFull.lessonDate.toLocaleDateString('ru-RU')} в ${lessonFull.startTime}`,
+        'booking',
+      );
+    }
+
+    return { message: 'Вы записаны на занятие' };
   }
 
   async cancelBooking(lessonId: number, userId: number) {
@@ -256,7 +273,12 @@ export class LessonsService {
       throw new BadRequestException('Нельзя отменить запись на прошедшее или отмененное занятие');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const lessonFull = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { group: true, trainer: { include: { user: true } } },
+    });
+
+    await this.prisma.$transaction(async (tx) => {
       if (attendance.subscriptionId) {
         const subscription = await tx.subscription.findUnique({
           where: { id: attendance.subscriptionId },
@@ -277,8 +299,17 @@ export class LessonsService {
       await tx.attendance.delete({
         where: { lesson_id_client_id: { lesson_id: lessonId, client_id: client.id } },
       });
-
-      return { message: 'Запись отменена' };
     });
+
+    if (lessonFull) {
+      await this.notifications.create(
+        lessonFull.trainer.user.id,
+        'Отмена записи на занятие',
+        `${client.fullName} отменил запись на занятие "${lessonFull.group.name}" ${lessonFull.lessonDate.toLocaleDateString('ru-RU')} в ${lessonFull.startTime}`,
+        'booking_cancelled',
+      );
+    }
+
+    return { message: 'Запись отменена' };
   }
 }

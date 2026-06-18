@@ -25,7 +25,13 @@ enum LessonStatus {
   CANCELLED
 }
 
+enum BookingType {
+  OPEN
+  APPLICATION
+}
+
 enum AttendanceStatus {
+  PENDING
   BOOKED
   PRESENT
   ABSENT
@@ -64,8 +70,22 @@ model User {
   client       Client?
   trainer      Trainer?
   refreshToken String?   @map("refresh_token")
+  notifications Notification[]
 
   @@map("users")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_id   Int
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
 }
 
 model Client {
@@ -130,16 +150,17 @@ model GroupMember {
 }
 
 model Lesson {
-  id         Int          @id @default(autoincrement())
-  group      Group        @relation(fields: [group_id], references: [id], onDelete: Cascade)
-  group_id   Int
-  trainer    Trainer      @relation(fields: [trainer_id], references: [id], onDelete: Cascade)
-  trainer_id Int
-  lessonDate DateTime     @map("lesson_date")
-  startTime  String       @map("start_time")
-  endTime    String       @map("end_time")
-  room       String
-  status     LessonStatus @default(SCHEDULED)
+  id          Int           @id @default(autoincrement())
+  group       Group         @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  group_id    Int
+  trainer     Trainer       @relation(fields: [trainer_id], references: [id], onDelete: Cascade)
+  trainer_id  Int
+  lessonDate  DateTime      @map("lesson_date")
+  startTime   String        @map("start_time")
+  endTime     String        @map("end_time")
+  room        String
+  status      LessonStatus  @default(SCHEDULED)
+  bookingType BookingType   @default(OPEN) @map("booking_type")
 
   attendances Attendance[]
 

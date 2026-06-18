@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../config/prisma.service';
 import { CreateSubscriptionDto, UpdateSubscriptionDto } from './dto/subscription.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async findAll(query?: { clientId?: number; status?: string }) {
     const where: any = {};
@@ -183,11 +187,26 @@ export class SubscriptionsService {
       include: { client: true },
     });
 
+    const admins = await this.prisma.user.findMany({
+      where: { role: { name: 'ADMIN' } },
+    });
+    for (const admin of admins) {
+      await this.notifications.create(
+        admin.id,
+        'Новая заявка на абонемент',
+        `${client.fullName} запросил абонемент типа "${type}" на сумму ${price} ₽`,
+        'subscription_request',
+      );
+    }
+
     return { message: 'Заявка отправлена', subscription };
   }
 
   async approveSubscription(id: number, startDate: string, endDate: string) {
-    const subscription = await this.prisma.subscription.findUnique({ where: { id } });
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id },
+      include: { client: { include: { user: true } } },
+    });
     if (!subscription) {
       throw new NotFoundException('Абонемент не найден');
     }
@@ -196,7 +215,7 @@ export class SubscriptionsService {
       throw new BadRequestException('Можно одобрить только заявку в статусе ожидания');
     }
 
-    return this.prisma.subscription.update({
+    const updated = await this.prisma.subscription.update({
       where: { id },
       data: {
         status: 'ACTIVE',
@@ -205,13 +224,32 @@ export class SubscriptionsService {
       },
       include: { client: true },
     });
+
+    await this.notifications.create(
+      subscription.client.user_id,
+      'Абонемент одобрен',
+      `Ваш абонемент "${subscription.type}" активирован. Действует до ${new Date(endDate).toLocaleDateString('ru-RU')}`,
+      'subscription_approved',
+    );
+
+    return updated;
   }
 
   async rejectSubscription(id: number) {
-    const subscription = await this.prisma.subscription.findUnique({ where: { id } });
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id },
+      include: { client: { include: { user: true } } },
+    });
     if (!subscription) {
       throw new NotFoundException('Абонемент не найден');
     }
+
+    await this.notifications.create(
+      subscription.client.user_id,
+      'Заявка отклонена',
+      `Ваша заявка на абонемент "${subscription.type}" была отклонена`,
+      'subscription_rejected',
+    );
 
     await this.prisma.subscription.delete({ where: { id } });
     return { message: 'Заявка отклонена' };
